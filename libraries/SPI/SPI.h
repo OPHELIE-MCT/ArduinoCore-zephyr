@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <api/HardwareSPI.h>
+#include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/spi.h>
 
 #undef SPI
@@ -39,7 +40,8 @@
 namespace arduino {
 class ZephyrSPI : public HardwareSPI {
 public:
-	ZephyrSPI(const struct device *spi);
+	ZephyrSPI(const struct device *spi, const struct pinctrl_dev_config *pinctrl_config = nullptr,
+			  uint8_t pinctrl_state = PINCTRL_STATE_DEFAULT);
 
 	virtual uint8_t transfer(uint8_t data);
 	virtual uint16_t transfer16(uint16_t data);
@@ -60,9 +62,12 @@ public:
 
 private:
 	int transfer(void *buf, size_t len, const struct spi_config *config);
+	int applyPinctrlState();
 
 protected:
 	const struct device *spi_dev;
+	const struct pinctrl_dev_config *pinctrl_config;
+	uint8_t pinctrl_state;
 	struct spi_config config;
 	struct spi_config config16;
 	int interrupt[INTERRUPT_COUNT];
@@ -87,6 +92,12 @@ DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), spis, DECLARE_EXTERN_SPI_N)
 #undef ARDUINO_SPI_DEFINED_0
 #else
 extern arduino::ZephyrSPI SPI;
+#endif
+
+#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spi1_alt_default) &&                                     \
+	(!DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spis) ||                                               \
+	 (DT_PROP_LEN(DT_PATH(zephyr_user), spis) <= 1))
+extern arduino::ZephyrSPI SPI1;
 #endif
 
 /* Serial Peripheral Control Register */

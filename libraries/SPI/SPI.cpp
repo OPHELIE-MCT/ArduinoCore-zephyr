@@ -8,7 +8,23 @@
 #include "zephyrInternal.h"
 #include <zephyr/kernel.h>
 
-arduino::ZephyrSPI::ZephyrSPI(const struct device *spi) : spi_dev(spi) {
+#define SPI_NODE_BY_IDX(n, p, i) DT_PHANDLE_BY_IDX(n, p, i)
+#define SPI_PINCTRL_CONFIG(node_id)                                                                \
+	COND_CODE_1(DT_NODE_HAS_PROP(node_id, pinctrl_0), (PINCTRL_DT_DEV_CONFIG_GET(node_id)),       \
+				(nullptr))
+
+arduino::ZephyrSPI::ZephyrSPI(const struct device *spi,
+							  const struct pinctrl_dev_config *pinctrl_config,
+							  uint8_t pinctrl_state)
+	: spi_dev(spi), pinctrl_config(pinctrl_config), pinctrl_state(pinctrl_state) {
+}
+
+int arduino::ZephyrSPI::applyPinctrlState() {
+	if (pinctrl_config == nullptr) {
+		return 0;
+	}
+
+	return pinctrl_apply_state(pinctrl_config, pinctrl_state);
 }
 
 uint8_t arduino::ZephyrSPI::transfer(uint8_t data) {
@@ -33,6 +49,11 @@ void arduino::ZephyrSPI::transfer(void *buf, size_t count) {
 }
 
 int arduino::ZephyrSPI::transfer(void *buf, size_t len, const struct spi_config *config) {
+	int ret = applyPinctrlState();
+	if (ret < 0) {
+		return ret;
+	}
+
 	const struct spi_buf tx_buf = {.buf = buf, .len = len};
 	const struct spi_buf_set tx_buf_set = {
 		.buffers = &tx_buf,
@@ -57,6 +78,8 @@ void arduino::ZephyrSPI::notUsingInterrupt(int interruptNumber) {
 }
 
 void arduino::ZephyrSPI::beginTransaction(SPISettings settings) {
+	(void)applyPinctrlState();
+
 	uint32_t mode = SPI_HOLD_ON_CS;
 
 	// Set bus mode
@@ -116,6 +139,7 @@ void arduino::ZephyrSPI::detachInterrupt() {
 
 void arduino::ZephyrSPI::begin() {
 	spi_dev->ops.init(spi_dev);
+	(void)applyPinctrlState();
 }
 
 void arduino::ZephyrSPI::end() {
@@ -129,8 +153,12 @@ void arduino::ZephyrSPI::end() {
 #if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spis)
 #if (DT_PROP_LEN(DT_PATH(zephyr_user), spis) > 1)
 #define ARDUINO_SPI_DEFINED_0 1
-#define DECL_SPI_0(n, p, i)   arduino::ZephyrSPI SPI(DEVICE_DT_GET(DT_PHANDLE_BY_IDX(n, p, i)));
-#define DECL_SPI_N(n, p, i)   arduino::ZephyrSPI SPI##i(DEVICE_DT_GET(DT_PHANDLE_BY_IDX(n, p, i)));
+#define DECL_SPI_0(n, p, i)                                                                        \
+	arduino::ZephyrSPI SPI(DEVICE_DT_GET(SPI_NODE_BY_IDX(n, p, i)),                               \
+						  SPI_PINCTRL_CONFIG(SPI_NODE_BY_IDX(n, p, i)));
+#define DECL_SPI_N(n, p, i)                                                                        \
+	arduino::ZephyrSPI SPI##i(DEVICE_DT_GET(SPI_NODE_BY_IDX(n, p, i)),                            \
+							  SPI_PINCTRL_CONFIG(SPI_NODE_BY_IDX(n, p, i)));
 #define DECLARE_SPI_N(n, p, i)                                                                     \
 	COND_CODE_1(ARDUINO_SPI_DEFINED_##i, (DECL_SPI_0(n, p, i)), (DECL_SPI_N(n, p, i)))
 
@@ -143,9 +171,35 @@ DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), spis, DECLARE_SPI_N)
 #undef ARDUINO_SPI_DEFINED_0
 #else  // PROP_LEN(spis) > 1
 /* When PROP_LEN(spis) == 1, DT_FOREACH_PROP_ELEM work not correctly. */
-arduino::ZephyrSPI SPI(DEVICE_DT_GET(DT_PHANDLE_BY_IDX(DT_PATH(zephyr_user), spis, 0)));
+arduino::ZephyrSPI SPI(DEVICE_DT_GET(SPI_NODE_BY_IDX(DT_PATH(zephyr_user), spis, 0)),
+					   SPI_PINCTRL_CONFIG(SPI_NODE_BY_IDX(DT_PATH(zephyr_user), spis, 0)));
 #endif // HAS_PORP(spis)
 /* If spis node is not defined, tries to use arduino_spi */
 #elif DT_NODE_EXISTS(DT_NODELABEL(arduino_spi))
-arduino::ZephyrSPI SPI(DEVICE_DT_GET(DT_NODELABEL(arduino_spi)));
+arduino::ZephyrSPI SPI(DEVICE_DT_GET(DT_NODELABEL(arduino_spi)),
+					   SPI_PINCTRL_CONFIG(DT_NODELABEL(arduino_spi)));
 #endif
+
+#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spi1_alt_default) &&                                     \
+	DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spis) &&                                                \
+	(DT_PROP_LEN(DT_PATH(zephyr_user), spis) == 1)
+PINCTRL_DT_STATE_PINS_DEFINE(DT_PATH(zephyr_user), spi1_alt_default);
+
+static const struct pinctrl_state spi1_alt_states[] = {
+	PINCTRL_DT_STATE_INIT(spi1_alt_default, PINCTRL_STATE_DEFAULT),
+};
+
+static const struct pinctrl_dev_config spi1_alt_pinctrl = {
+#ifdef CONFIG_PINCTRL_STORE_REG
+	.reg = DT_REG_ADDR(SPI_NODE_BY_IDX(DT_PATH(zephyr_user), spis, 0)),
+#endif
+	.states = spi1_alt_states,
+	.state_cnt = ARRAY_SIZE(spi1_alt_states),
+};
+
+arduino::ZephyrSPI SPI1(DEVICE_DT_GET(SPI_NODE_BY_IDX(DT_PATH(zephyr_user), spis, 0)),
+						&spi1_alt_pinctrl);
+#endif
+
+#undef SPI_PINCTRL_CONFIG
+#undef SPI_NODE_BY_IDX

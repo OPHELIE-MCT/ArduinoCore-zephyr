@@ -340,7 +340,8 @@
 		serials = <&usart1>, <&lpuart1>;
 		cans = <&fdcan1>;
 		i2cs = <&i2c2>, <&i2c4>, <&i2c3>;
-		spis = <&spi2>, <&spi3>;
+		spis = <&spi2>;
+		spi1-alt-default = <&spi2_sck_pd1 &spi2_miso_pc2 &spi2_mosi_pc3>;
 		/* PWM mapping for the digital pins  */
 		/* Currently only the pins marked with ~ on the pin headers are enabled */
 		pwms = 
