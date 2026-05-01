@@ -20,11 +20,9 @@ arduino::ZephyrSPI::ZephyrSPI(const struct device *spi,
 }
 
 int arduino::ZephyrSPI::applyPinctrlState() {
-	if (pinctrl_config == nullptr) {
-		return 0;
-	}
-
-	return pinctrl_apply_state(pinctrl_config, pinctrl_state);
+	ARG_UNUSED(pinctrl_config);
+	ARG_UNUSED(pinctrl_state);
+	return 0;
 }
 
 uint8_t arduino::ZephyrSPI::transfer(uint8_t data) {
@@ -151,11 +149,9 @@ void arduino::ZephyrSPI::end() {
 #if (DT_PROP_LEN(DT_PATH(zephyr_user), spis) > 1)
 #define ARDUINO_SPI_DEFINED_0 1
 #define DECL_SPI_0(n, p, i)                                                                        \
-	arduino::ZephyrSPI SPI(DEVICE_DT_GET(SPI_NODE_BY_IDX(n, p, i)),                               \
-						  SPI_PINCTRL_CONFIG(SPI_NODE_BY_IDX(n, p, i)));
+	arduino::ZephyrSPI SPI(DEVICE_DT_GET(SPI_NODE_BY_IDX(n, p, i)), nullptr);
 #define DECL_SPI_N(n, p, i)                                                                        \
-	arduino::ZephyrSPI SPI##i(DEVICE_DT_GET(SPI_NODE_BY_IDX(n, p, i)),                            \
-							  SPI_PINCTRL_CONFIG(SPI_NODE_BY_IDX(n, p, i)));
+	arduino::ZephyrSPI SPI##i(DEVICE_DT_GET(SPI_NODE_BY_IDX(n, p, i)), nullptr);
 #define DECLARE_SPI_N(n, p, i)                                                                     \
 	COND_CODE_1(ARDUINO_SPI_DEFINED_##i, (DECL_SPI_0(n, p, i)), (DECL_SPI_N(n, p, i)))
 
@@ -168,18 +164,15 @@ DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), spis, DECLARE_SPI_N)
 #undef ARDUINO_SPI_DEFINED_0
 #else  // PROP_LEN(spis) > 1
 /* When PROP_LEN(spis) == 1, DT_FOREACH_PROP_ELEM work not correctly. */
-arduino::ZephyrSPI SPI(DEVICE_DT_GET(SPI_NODE_BY_IDX(DT_PATH(zephyr_user), spis, 0)),
-					   SPI_PINCTRL_CONFIG(SPI_NODE_BY_IDX(DT_PATH(zephyr_user), spis, 0)));
+arduino::ZephyrSPI SPI(DEVICE_DT_GET(SPI_NODE_BY_IDX(DT_PATH(zephyr_user), spis, 0)), nullptr);
 #endif // HAS_PORP(spis)
 /* If spis node is not defined, tries to use arduino_spi */
 #elif DT_NODE_EXISTS(DT_NODELABEL(arduino_spi))
-arduino::ZephyrSPI SPI(DEVICE_DT_GET(DT_NODELABEL(arduino_spi)),
-					   SPI_PINCTRL_CONFIG(DT_NODELABEL(arduino_spi)));
+arduino::ZephyrSPI SPI(DEVICE_DT_GET(DT_NODELABEL(arduino_spi)), nullptr);
 #endif
 
-#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spi1_alt_default) &&                                     \
-	DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spis) &&                                                \
-	(DT_PROP_LEN(DT_PATH(zephyr_user), spis) == 1)
+#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spi1_alt_default) &&                                    \
+	DT_NODE_HAS_PROP(DT_PATH(zephyr_user), spis) && (DT_PROP_LEN(DT_PATH(zephyr_user), spis) == 1)
 PINCTRL_DT_STATE_PINS_DEFINE(DT_PATH(zephyr_user), spi1_alt_default);
 
 static const struct pinctrl_state spi1_alt_states[] = {
