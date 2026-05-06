@@ -5,7 +5,6 @@
  */
 
 #include "SPI.h"
-#include "zephyrInternal.h"
 #include <zephyr/kernel.h>
 
 #define SPI_NODE_BY_IDX(n, p, i) DT_PHANDLE_BY_IDX(n, p, i)
